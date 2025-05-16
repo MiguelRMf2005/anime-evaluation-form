@@ -57,3 +57,5 @@ Licença
 Este projeto é de código aberto sob a Licença MIT. Use, modifique e compartilhe livremente!
 
 Feito com 💙 por [MiguelRMf2005] para fãs de anime. Divirta-se avaliando seus animes favoritos!
+
+Esse é um projeto que eu fiz para pôr em prática o que aprendi neste início de faculdade.
