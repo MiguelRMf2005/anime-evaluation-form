@@ -1,43 +1,4 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -57,6 +18,10 @@
             display: none;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        #mal-link {
+            display: none;
+            margin-top: 1rem;
         }
         .form-section {
             margin-bottom: 2rem;
@@ -121,10 +86,11 @@
                     <p class="text-sm text-gray-400">
                         1. Digite o nome do anime ou filme no campo "Título do Anime".<br>
                         2. Dados como gêneros, estúdio, duração e recomendações serão preenchidos automaticamente.<br>
-                        3. Dê notas de 1 a 10 para cada critério e adicione observações.<br>
-                        4. Clique em "Calcular Nota" para ver a média.<br>
-                        5. Use "Recarregar" para novas recomendações.<br>
-                        6. Exporte a ficha como PDF com o botão "Exportar como PDF".
+                        3. Clique no link abaixo do banner para visitar a página do anime no MyAnimeList.<br>
+                        4. Dê notas de 1 a 10 para cada critério e adicione observações.<br>
+                        5. Clique em "Calcular Nota" para ver a média.<br>
+                        6. Use "Recarregar" para novas recomendações.<br>
+                        7. Exporte a ficha como PDF com o botão "Exportar como PDF".
                     </p>
                 </div>
                 <div id="loading-spinner"></div>
@@ -272,6 +238,7 @@
             <div class="md:w-1/3">
                 <h2 class="text-xl font-semibold mb-4 text-blue-200">Banner do Anime</h2>
                 <img id="banner-image" src="" alt="Banner do Anime" class="rounded">
+                <a id="mal-link" href="#" target="_blank" class="text-blue-400 hover:underline">Ver no MyAnimeList</a>
             </div>
         </div>
     </div>
@@ -282,7 +249,7 @@
 
         // Parse duration string to hours
         function parseDurationToHours(duration, episodes, type) {
-            if (!duration) return '';
+            if (!duration) return 'Desconhecido';
             const regex = /(\d+)\s*hr\s*(?:(\d+)\s*min)?|(\d+)\s*min/;
             const match = duration.match(regex);
             let totalMinutes = 0;
@@ -297,7 +264,7 @@
             }
 
             if (type === 'Movie' || type === 'OVA' || episodes <= 1) {
-                return totalMinutes > 0 ? (totalMinutes / 60).toFixed(1) + ' horas' : '';
+                return totalMinutes > 0 ? (totalMinutes / 60).toFixed(1) + ' horas' : 'Desconhecido';
             } else {
                 const episodeDuration = totalMinutes || 24; // Default 24 min
                 const totalEpisodes = episodes || 1;
@@ -356,6 +323,11 @@
                     bannerImage.src = anime.images.jpg.large_image_url || anime.images.jpg.image_url;
                     bannerImage.style.display = 'block';
 
+                    // Set MAL link
+                    const malLink = document.getElementById('mal-link');
+                    malLink.href = anime.url;
+                    malLink.style.display = 'block';
+
                     // Set genres
                     const genreNames = anime.genres.map(genre => genre.name).join(', ');
                     document.getElementById('genres').value = genreNames || 'Desconhecido';
@@ -388,11 +360,13 @@
                 } else {
                     alert('Anime não encontrado. Verifique o título.');
                     document.getElementById('recommendations-list').innerHTML = '<p class="text-gray-400">Nenhuma recomendação disponível.</p>';
+                    document.getElementById('mal-link').style.display = 'none';
                 }
             } catch (error) {
                 console.error('Erro ao buscar dados do anime:', error);
                 alert('Erro ao buscar dados do anime. Tente novamente mais tarde.');
                 document.getElementById('recommendations-list').innerHTML = '<p class="text-gray-400">Erro ao carregar recomendações.</p>';
+                document.getElementById('mal-link').style.display = 'none';
             } finally {
                 toggleSpinner(false);
             }
