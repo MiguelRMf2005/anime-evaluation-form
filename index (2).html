@@ -1,0 +1,513 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ficha de Avaliação de Anime</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.2/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a1a;
+            color: #e5e7eb;
+        }
+        #banner-image, .recommendation-image {
+            max-width: 300px;
+            height: auto;
+            display: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        #mal-link {
+            display: none;
+            margin-top: 1rem;
+        }
+        .form-section {
+            margin-bottom: 2rem;
+        }
+        .score-input {
+            width: 70px;
+            background-color: #2d2d2d;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+        }
+        .notes-input {
+            width: 100%;
+            background-color: #2d2d2d;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+        }
+        .form-container {
+            background-color: #262626;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+        }
+        button {
+            transition: background-color 0.2s ease;
+        }
+        input, select, textarea {
+            transition: border-color 0.2s ease;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: #3b82f6;
+            outline: none;
+        }
+        .recommendation-card {
+            background-color: #2d2d2d;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        #loading-spinner {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-6">
+    <div class="max-w-5xl mx-auto form-container p-8">
+        <div class="flex flex-col md:flex-row gap-8">
+            <!-- Form Section -->
+            <div class="md:w-2/3">
+                <h1 class="text-3xl font-bold mb-4 text-blue-300">Ficha de Avaliação de Anime</h1>
+                <div class="mb-6 p-4 bg-gray-800 rounded-lg">
+                    <h3 class="text-lg font-semibold text-blue-200">Instruções</h3>
+                    <p class="text-sm text-gray-400">
+                        1. Digite o nome do anime ou filme no campo "Título do Anime".<br>
+                        2. Dados como gêneros, estúdio, duração e recomendações serão preenchidos automaticamente.<br>
+                        3. Clique no link abaixo do banner para visitar a página do anime no MyAnimeList.<br>
+                        4. Dê notas de 1 a 10 para cada critério e adicione observações.<br>
+                        5. Clique em "Calcular Nota" para ver a média.<br>
+                        6. Use "Recarregar" para novas recomendações.<br>
+                        7. Exporte a ficha como PDF com o botão "Exportar como PDF".
+                    </p>
+                </div>
+                <div id="loading-spinner"></div>
+                <form id="evaluation-form">
+                    <!-- Informações Gerais -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold mb-4 text-blue-200">Informações Gerais</h2>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Título do Anime</label>
+                            <input type="text" id="anime-title" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" placeholder="ex.: Shingeki no Kyojin" required>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Tipo</label>
+                            <select id="anime-type" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white">
+                                <option value="Anime">Anime (Série)</option>
+                                <option value="Filme">Filme</option>
+                                <option value="OVA">OVA</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Gênero(s)</label>
+                            <input type="text" id="genres" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" readonly placeholder="ex.: Ação, Drama">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Estúdio</label>
+                            <input type="text" id="studio" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" placeholder="ex.: MAPPA">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Número de Episódios</label>
+                            <input type="number" id="episodes" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" min="1" readonly>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Duração Total (horas)</label>
+                            <input type="text" id="duration" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" readonly>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Ano de Lançamento</label>
+                            <input type="number" id="year" class="mt-1 p-2 w-full border rounded bg-gray-700 border-gray-600 text-white" min="1900" max="2025" readonly>
+                        </div>
+                    </div>
+
+                    <!-- Critérios de Avaliação -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold mb-4 text-blue-200">Critérios de Avaliação</h2>
+                        <p class="text-sm text-gray-400 mb-4">Dê uma nota de 1 a 10 para cada critério e adicione observações, se quiser.</p>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">1. História e Enredo</label>
+                            <input type="number" id="story-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="story-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Enredo envolvente, mas final corrido"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">2. Personagens</label>
+                            <input type="number" id="characters-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="characters-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Protagonista marcante, coadjuvantes fracos"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">3. Construção de Mundo e Cenário</label>
+                            <input type="number" id="world-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="world-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Mundo de fantasia imersivo"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">4. Entretenimento</label>
+                            <input type="number" id="entertainment-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="entertainment-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Me prendeu do início ao fim"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">5. Animação e Estilo Artístico</label>
+                            <input type="number" id="animation-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="animation-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Visuais incríveis, mas qualidade oscila"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">6. Música e Design de Som</label>
+                            <input type="number" id="music-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="music-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Trilha sonora memorável"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">7. Temas e Impacto Emocional</label>
+                            <input type="number" id="themes-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="themes-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Temas profundos de amizade"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">8. Ritmo e Estrutura</label>
+                            <input type="number" id="pacing-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="pacing-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Bem ritmado, mas com fillers"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">9. Apreciação Pessoal</label>
+                            <input type="number" id="enjoyment-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="enjoyment-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Amei apesar de falhas"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">10. Impressão Geral</label>
+                            <input type="number" id="overall-score" class="mt-1 p-2 score-input rounded" min="1" max="10" required>
+                            <textarea id="overall-notes" class="mt-2 p-2 notes-input rounded" placeholder="Ex.: Um clássico moderno"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Observações Adicionais -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold mb-4 text-blue-200">Observações Adicionais</h2>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Pontos Fortes</label>
+                            <textarea id="strengths" class="mt-1 p-2 notes-input rounded" placeholder="Ex.: Cenas de ação incríveis"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Pontos Fracos</label>
+                            <textarea id="weaknesses" class="mt-1 p-2 notes-input rounded" placeholder="Ex.: Final fraco"></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Recomendações</label>
+                            <textarea id="recommendations" class="mt-1 p-2 notes-input rounded" placeholder="Ex.: Ótimo para fãs de ação"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Nota Final -->
+                    <div class="form-section">
+                        <h2 class="text-xl font-semibold mb-4 text-blue-200">Nota Final</h2>
+                        <p id="final-score" class="text-lg font-bold text-blue-300">Nota Geral: N/A</p>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium mb-1">Comentários para o MyAnimeList</label>
+                            <textarea id="mal-comments" class="mt-1 p-2 notes-input rounded" placeholder="Ex.: Um anime emocionante com pequenos problemas de ritmo."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="flex space-x-4">
+                        <button type="button" id="calculate-score" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700">Calcular Nota</button>
+                        <button type="button" id="export-form" class="bg-green-600 text-white p-3 rounded-lg hover:bg-green-700">Exportar como PDF</button>
+                    </div>
+                </form>
+
+                <!-- Recomendações -->
+                <div class="form-section mt-8">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold text-blue-200">Animes Recomendados</h2>
+                        <button type="button" id="reload-recommendations" class="bg-purple-600 text-white p-2 rounded-lg hover:bg-purple-700">Recarregar</button>
+                    </div>
+                    <p class="text-sm text-gray-400 mb-4">Baseado no anime inserido, aqui estão cinco animes similares que você pode gostar.</p>
+                    <div id="recommendations-list" class="grid grid-cols-1 gap-4">
+                        <!-- Recommendations will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+            <!-- Banner Section -->
+            <div class="md:w-1/3">
+                <h2 class="text-xl font-semibold mb-4 text-blue-200">Banner do Anime</h2>
+                <img id="banner-image" src="" alt="Banner do Anime" class="rounded">
+                <a id="mal-link" href="#" target="_blank" class="text-blue-400 hover:underline">Ver no MyAnimeList</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentAnimeId = null;
+        let usedRecommendationIds = new Set();
+
+        // Parse duration string to hours
+        function parseDurationToHours(duration, episodes, type) {
+            if (!duration) return 'Desconhecido';
+            const regex = /(\d+)\s*hr\s*(?:(\d+)\s*min)?|(\d+)\s*min/;
+            const match = duration.match(regex);
+            let totalMinutes = 0;
+
+            if (match) {
+                if (match[1]) { // Hours present
+                    totalMinutes += parseInt(match[1]) * 60;
+                    if (match[2]) totalMinutes += parseInt(match[2]);
+                } else if (match[3]) { // Only minutes
+                    totalMinutes += parseInt(match[3]);
+                }
+            }
+
+            if (type === 'Movie' || type === 'OVA' || episodes <= 1) {
+                return totalMinutes > 0 ? (totalMinutes / 60).toFixed(1) + ' horas' : 'Desconhecido';
+            } else {
+                const episodeDuration = totalMinutes || 24; // Default 24 min
+                const totalEpisodes = episodes || 1;
+                return (totalEpisodes * episodeDuration / 60).toFixed(1) + ' horas';
+            }
+        }
+
+        // Cache API response
+        function cacheResponse(key, data, expiryHours = 24) {
+            const cache = {
+                data,
+                timestamp: Date.now(),
+                expiry: expiryHours * 60 * 60 * 1000
+            };
+            localStorage.setItem(key, JSON.stringify(cache));
+        }
+
+        function getCachedResponse(key) {
+            const cached = localStorage.getItem(key);
+            if (!cached) return null;
+            const { data, timestamp, expiry } = JSON.parse(cached);
+            if (Date.now() - timestamp > expiry) {
+                localStorage.removeItem(key);
+                return null;
+            }
+            return data;
+        }
+
+        // Show/hide loading spinner
+        function toggleSpinner(show) {
+            document.getElementById('loading-spinner').style.display = show ? 'block' : 'none';
+        }
+
+        // Fetch anime details using Jikan API
+        document.getElementById('anime-title').addEventListener('blur', async () => {
+            const title = document.getElementById('anime-title').value.trim();
+            if (!title) return;
+
+            toggleSpinner(true);
+            const cacheKey = `anime_${title.toLowerCase()}`;
+            let animeData = getCachedResponse(cacheKey);
+
+            try {
+                if (!animeData) {
+                    const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(title)}&limit=1`);
+                    animeData = await response.json();
+                    cacheResponse(cacheKey, animeData);
+                }
+
+                if (animeData.data && animeData.data.length > 0) {
+                    const anime = animeData.data[0];
+                    currentAnimeId = anime.mal_id;
+
+                    // Set banner image
+                    const bannerImage = document.getElementById('banner-image');
+                    bannerImage.src = anime.images.jpg.large_image_url || anime.images.jpg.image_url;
+                    bannerImage.style.display = 'block';
+
+                    // Set MAL link
+                    const malLink = document.getElementById('mal-link');
+                    malLink.href = anime.url;
+                    malLink.style.display = 'block';
+
+                    // Set genres
+                    const genreNames = anime.genres.map(genre => genre.name).join(', ');
+                    document.getElementById('genres').value = genreNames || 'Desconhecido';
+
+                    // Set studio
+                    const studios = anime.studios.map(studio => studio.name).join(', ');
+                    document.getElementById('studio').value = studios || 'Desconhecido';
+
+                    // Set type
+                    const typeMap = {
+                        'TV': 'Anime',
+                        'Movie': 'Filme',
+                        'OVA': 'OVA'
+                    };
+                    const animeType = typeMap[anime.type] || 'Anime';
+                    document.getElementById('anime-type').value = animeType;
+
+                    // Set episodes
+                    document.getElementById('episodes').value = anime.episodes || (anime.type === 'Movie' ? 1 : '');
+
+                    // Calculate total duration
+                    document.getElementById('duration').value = parseDurationToHours(anime.duration, anime.episodes, anime.type) || 'Desconhecido';
+
+                    // Set year
+                    document.getElementById('year').value = anime.year || anime.aired?.prop?.from?.year || '';
+
+                    // Reset recommendations
+                    usedRecommendationIds.clear();
+                    await fetchRecommendations(currentAnimeId);
+                } else {
+                    alert('Anime não encontrado. Verifique o título.');
+                    document.getElementById('recommendations-list').innerHTML = '<p class="text-gray-400">Nenhuma recomendação disponível.</p>';
+                    document.getElementById('mal-link').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Erro ao buscar dados do anime:', error);
+                alert('Erro ao buscar dados do anime. Tente novamente mais tarde.');
+                document.getElementById('recommendations-list').innerHTML = '<p class="text-gray-400">Erro ao carregar recomendações.</p>';
+                document.getElementById('mal-link').style.display = 'none';
+            } finally {
+                toggleSpinner(false);
+            }
+        });
+
+        // Fetch recommendations using Jikan API
+        async function fetchRecommendations(animeId) {
+            if (!animeId) return;
+
+            toggleSpinner(true);
+            const cacheKey = `recommendations_${animeId}`;
+            let recData = getCachedResponse(cacheKey);
+
+            try {
+                if (!recData) {
+                    const response = await fetch(`https://api.jikan.moe/v4/anime/${animeId}/recommendations`);
+                    recData = await response.json();
+                    cacheResponse(cacheKey, recData);
+                }
+
+                const recommendations = recData.data.filter(rec => !usedRecommendationIds.has(rec.entry.mal_id)).slice(0, 5);
+                const recommendationsList = document.getElementById('recommendations-list');
+
+                if (recommendations.length === 0) {
+                    recommendationsList.innerHTML = '<p class="text-gray-400">Nenhuma nova recomendação disponível para este anime.</p>';
+                    return;
+                }
+
+                recommendationsList.innerHTML = '';
+                recommendations.forEach(rec => {
+                    const anime = rec.entry;
+                    usedRecommendationIds.add(anime.mal_id);
+                    const card = document.createElement('div');
+                    card.className = 'recommendation-card';
+                    card.innerHTML = `
+                        <div class="flex items-center gap-4">
+                            <img class="recommendation-image" src="${anime.images.jpg.large_image_url || anime.images.jpg.image_url}" alt="${anime.title}" style="display: block;">
+                            <div>
+                                <h3 class="text-lg font-semibold text-blue-300">${anime.title}</h3>
+                                <a href="${anime.url}" target="_blank" class="text-blue-400 hover:underline">Ver no MyAnimeList</a>
+                            </div>
+                        </div>
+                    `;
+                    recommendationsList.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Erro ao buscar recomendações:', error);
+                document.getElementById('recommendations-list').innerHTML = '<p class="text-gray-400">Erro ao carregar recomendações.</p>';
+            } finally {
+                toggleSpinner(false);
+            }
+        }
+
+        // Reload recommendations
+        document.getElementById('reload-recommendations').addEventListener('click', async () => {
+            if (currentAnimeId) {
+                await fetchRecommendations(currentAnimeId);
+            } else {
+                alert('Insira o título do anime primeiro.');
+            }
+        });
+
+        // Calculate final score
+        document.getElementById('calculate-score').addEventListener('click', () => {
+            const scores = [
+                parseInt(document.getElementById('story-score').value) || 0,
+                parseInt(document.getElementById('characters-score').value) || 0,
+                parseInt(document.getElementById('world-score').value) || 0,
+                parseInt(document.getElementById('entertainment-score').value) || 0,
+                parseInt(document.getElementById('animation-score').value) || 0,
+                parseInt(document.getElementById('music-score').value) || 0,
+                parseInt(document.getElementById('themes-score').value) || 0,
+                parseInt(document.getElementById('pacing-score').value) || 0,
+                parseInt(document.getElementById('enjoyment-score').value) || 0,
+                parseInt(document.getElementById('overall-score').value) || 0
+            ];
+
+            const validScores = scores.filter(score => score >= 1 && score <= 10);
+            if (validScores.length === 0) {
+                document.getElementById('final-score').textContent = 'Nota Geral: N/A';
+                return;
+            }
+
+            const averageScore = (validScores.reduce((sum, score) => sum + score, 0) / validScores.length).toFixed(1);
+            document.getElementById('final-score').textContent = `Nota Geral: ${averageScore}/10`;
+        });
+
+        // Export form as PDF
+        document.getElementById('export-form').addEventListener('click', () => {
+            toggleSpinner(true);
+            const element = document.querySelector('.form-container');
+            const opt = {
+                margin: 0.5,
+                filename: `Ficha_Avaliacao_${document.getElementById('anime-title').value || 'Sem_Titulo'}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            html2pdf().from(element).set(opt).save().then(() => {
+                toggleSpinner(false);
+            });
+        });
+    </script>
+</body>
+</html>
