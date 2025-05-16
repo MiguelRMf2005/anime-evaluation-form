@@ -1,4 +1,4 @@
-Ficha de Avaliação de Anime
+Ficha de Avaliação de Anime (otimizado apenas para PC)
  
 Bem-vindo à Ficha de Avaliação de Anime, uma aplicação web para fãs de anime e filmes criarem fichas detalhadas de avaliação. Com uma interface elegante e moderna, a ferramenta permite avaliar animes, calcular notas, explorar recomendações e exportar fichas em PDF. Tudo é integrado com a API do MyAnimeList para preenchimento automático de dados!
 O que é?
